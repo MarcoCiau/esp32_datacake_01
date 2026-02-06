@@ -1,18 +1,27 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include "credentials.h"
+
+#ifndef USE_SIMULATED_DEVICE
+#include "bme280.h"
+#endif
 
 #define HTTP_POST_INTERVAL_MS (10000UL)
 
-
-const char* ssid = "Ciau_Starlink"; //TODO: update wifi ssid
-const char* password = "EaSyNeTMilk23"; //TODO: update wifi password
-
-const char* serverName = "https://api.datacake.co/integrations/api/TU_URL_AQUI"; //TODO:update according Datacake Server URL
-
 void setup() {
   Serial.begin(115200);
-  WiFi.begin(ssid, password);
+  
+#ifdef USE_SIMULATED_DEVICE
+  Serial.println("Using simulated sensor data");
+#else
+  Serial.println("Initializing BME280 sensor...");
+  if (!bme280_init()) {
+    Serial.println("WARNING: BME280 initialization failed. Check wiring!");
+  }
+#endif
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -25,32 +34,52 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
 
-    http.begin(serverName);
+    http.begin(DATACAKE_SERVER_URL);
     http.addHeader("Content-Type", "application/json");
 
     StaticJsonDocument<256> jsonDoc;
-    jsonDoc["device"] = "TU_DEVICE_ID_AQUI";
-   // Simulated sensor data using random()
+    jsonDoc["device"] = DATACAKE_DEVICE_ID;
+    
+    bool dataReady = false;
+    
+#ifdef USE_SIMULATED_DEVICE
+    // Simulated sensor data using random()
     jsonDoc["temperature"] = random(200, 350) / 10.0;  // 20.0 to 35.0 °C
-    jsonDoc["battery"]     = random(300, 420) / 100.0; // 3.00 to 4.20 V
     jsonDoc["humidity"]    = random(300, 900) / 10.0;  // 30.0% to 90.0%
-    jsonDoc["co2"]         = random(400, 2000);        // 400 to 2000 ppm
-
-    String requestBody;
-    serializeJson(jsonDoc, requestBody);
-    Serial.println("\n-----------------------------");
-    Serial.println("Sending JSON to Datacake:");
-    Serial.println(requestBody);
-    Serial.println("-----------------------------");
-    int httpResponseCode = http.POST(requestBody);
-
-    if (httpResponseCode > 0) {
-      String response = http.getString();
-      Serial.println(httpResponseCode);
-      Serial.println(response);
+    jsonDoc["pressure"]    = random(98000, 102000) / 100.0;  // 980.0 to 1020.0 hPa
+    jsonDoc["altitude"]    = random(400, 600) / 10.0;  // 40.0 to 60.0 meters
+    dataReady = true;
+#else
+    // Read data from BME280 sensor
+    bme280_data_t sensorData;
+    if (bme280_read(&sensorData)) {
+      jsonDoc["temperature"] = sensorData.temperature;
+      jsonDoc["humidity"]    = sensorData.humidity;
+      jsonDoc["pressure"]    = sensorData.pressure;
+      jsonDoc["altitude"]    = sensorData.altitude;
+      dataReady = true;
     } else {
-      Serial.print("Error on sending POST: ");
-      Serial.println(httpResponseCode);
+      Serial.println("ERROR: Failed to read BME280 sensor data!");
+    }
+#endif
+
+    if (dataReady) {
+      String requestBody;
+      serializeJson(jsonDoc, requestBody);
+      Serial.println("\n-----------------------------");
+      Serial.println("Sending JSON to Datacake:");
+      Serial.println(requestBody);
+      Serial.println("-----------------------------");
+      int httpResponseCode = http.POST(requestBody);
+
+      if (httpResponseCode > 0) {
+        String response = http.getString();
+        Serial.println(httpResponseCode);
+        Serial.println(response);
+      } else {
+        Serial.print("Error on sending POST: ");
+        Serial.println(httpResponseCode);
+      }
     }
 
     http.end();
