@@ -4,7 +4,7 @@ Proyecto de IoT que envía datos de sensores desde un ESP32 a Datacake para visu
 
 ## 📋 Descripción
 
-Este proyecto muestra cómo conectar un ESP32 a Datacake para enviar datos de sensores (temperatura, batería, humedad y CO2) y visualizarlos en un dashboard en tiempo real.
+Este proyecto muestra cómo conectar un ESP32 a Datacake para enviar datos de sensores (temperatura, humedad, presión y altitud) y visualizarlos en un dashboard en tiempo real. Soporta tanto datos simulados como sensores reales BME280.
 
 ## 🎥 Video Tutorial
 
@@ -14,10 +14,12 @@ Visita mi canal de YouTube [@mciau_tech](https://www.youtube.com/@mciau_tech) pa
 
 - ✅ Conexión WiFi automática
 - ✅ Envío de datos cada 10 segundos
-- ✅ Datos simulados de sensores (temperatura, batería, humedad, CO2)
+- ✅ Soporte para datos simulados o sensor BME280 real
 - ✅ Integración con Datacake API
 - ✅ Formato JSON estructurado
 - ✅ Logging en Serial Monitor
+- ✅ Configuración centralizada de credenciales
+- ✅ Módulo BME280 con funciones C simples (no OOP)
 
 ## 📦 Componentes Necesarios
 
@@ -25,24 +27,31 @@ Visita mi canal de YouTube [@mciau_tech](https://www.youtube.com/@mciau_tech) pa
 - Cable USB para programación
 - Conexión WiFi
 - Cuenta en [Datacake](https://datacake.co)
+- (Opcional) Sensor BME280 para datos reales
 
 ## ⚙️ Configuración
 
 ### 1. Instalar Dependencias
 
-Este proyecto usa PlatformIO. Las dependencias se instalan automáticamente, pero asegúrate de tener:
+Este proyecto usa PlatformIO. Las dependencias se instalan automáticamente:
 
 - `WiFi` (incluido en ESP32 Arduino Core)
 - `HTTPClient` (incluido en ESP32 Arduino Core)
 - `ArduinoJson` (se instala automáticamente)
+- `Adafruit BME280 Library` (se instala automáticamente si usas sensor real)
 
-### 2. Configurar WiFi
+### 2. Configurar Credenciales
 
-Edita `src/main.cpp` y actualiza tus credenciales WiFi:
+Edita `include/credentials.h` y actualiza tus credenciales:
 
 ```cpp
-const char* ssid = "TU_WIFI_SSID";
-const char* password = "TU_WIFI_PASSWORD";
+// WiFi Credentials
+#define WIFI_SSID "TU_WIFI_SSID"
+#define WIFI_PASSWORD "TU_WIFI_PASSWORD"
+
+// Datacake Configuration
+#define DATACAKE_SERVER_URL "https://api.datacake.co/integrations/api/TU_URL_AQUI"
+#define DATACAKE_DEVICE_ID "TU_DEVICE_ID_AQUI"
 ```
 
 ### 3. Configurar Datacake
@@ -50,35 +59,61 @@ const char* password = "TU_WIFI_PASSWORD";
 1. Crea una cuenta en [Datacake](https://datacake.co)
 2. Crea un nuevo dispositivo
 3. Agrega los siguientes campos:
+   - `device` (String)
    - `temperature` (Float)
-   - `battery` (Float)
    - `humidity` (Float)
-   - `co2` (Integer)
+   - `pressure` (Float)
+   - `altitude` (Float)
 4. Copia la URL de integración API de tu dispositivo
-5. Actualiza la variable `serverName` en `src/main.cpp`:
+5. Actualiza `DATACAKE_SERVER_URL` y `DATACAKE_DEVICE_ID` en `include/credentials.h`
 
-```cpp
-const char* serverName = "https://api.datacake.co/integrations/api/TU_URL_AQUI";
+### 4. Seleccionar Modo: Simulado o Sensor Real
+
+#### Opción A: Usar Datos Simulados
+
+Para usar datos simulados, descomenta la línea del build flag en `platformio.ini`:
+
+```ini
+build_flags =
+    -DUSE_SIMULATED_DEVICE  ; Descomentado = usa datos simulados
 ```
 
-### 4. Obtener Device ID
+**Nota:** Con esta configuración, no necesitas conectar ningún sensor físico.
 
-Reemplaza el Device ID en el código:
+#### Opción B: Usar Sensor BME280 Real (Por Defecto)
 
-```cpp
-jsonDoc["device"] = "TU_DEVICE_ID_AQUI";
+El proyecto viene configurado para usar el sensor BME280 real. En `platformio.ini`, la línea del build flag está comentada:
+
+```ini
+build_flags =
+    ; -DUSE_SIMULATED_DEVICE  ; Comentado = usa sensor BME280 real
 ```
+
+1. Conecta el sensor BME280 al ESP32:
+   - **VCC** → 3.3V
+   - **GND** → GND
+   - **SDA** → GPIO 21
+   - **SCL** → GPIO 22
+
+2. El sensor intentará automáticamente ambos I2C addresses (0x76 y 0x77)
+
+**Resumen:**
+- **Flag comentado** (`; -DUSE_SIMULATED_DEVICE`) = **Sensor BME280 real** (modo actual)
+- **Flag descomentado** (`-DUSE_SIMULATED_DEVICE`) = **Datos simulados**
 
 ## 📊 Datos Enviados
 
-El ESP32 envía los siguientes datos simulados:
+El ESP32 envía los siguientes datos según el modo configurado:
 
-| Campo | Tipo | Rango | Descripción |
-|-------|------|-------|-------------|
+| Campo | Tipo | Rango (Simulado) | Descripción |
+|-------|------|------------------|-------------|
+| `device` | String | - | ID del dispositivo en Datacake |
 | `temperature` | Float | 20.0 - 35.0 °C | Temperatura ambiente |
-| `battery` | Float | 3.00 - 4.20 V | Voltaje de batería |
 | `humidity` | Float | 30.0 - 90.0 % | Humedad relativa |
-| `co2` | Integer | 400 - 2000 ppm | Concentración de CO2 |
+| `pressure` | Float | 980.0 - 1020.0 hPa | Presión atmosférica |
+| `altitude` | Float | 40.0 - 60.0 m | Altitud calculada |
+
+**Nota:** Si usas el sensor BME280 real, los valores serán los medidos por el sensor.
 
 ## 🎨 Crear Dashboard en Datacake
 
@@ -96,6 +131,12 @@ El ESP32 envía los siguientes datos simulados:
 esp32_datacake_01/
 ├── src/
 │   └── main.cpp          # Código principal
+├── include/
+│   └── credentials.h     # Credenciales WiFi y Datacake
+├── lib/
+│   └── bme280/
+│       ├── bme280.h      # Header del módulo BME280
+│       └── bme280.cpp     # Implementación del módulo BME280
 ├── platformio.ini        # Configuración de PlatformIO
 └── README.md             # Este archivo
 ```
@@ -113,28 +154,44 @@ El ESP32 envía datos en el siguiente formato:
 
 ```json
 {
-  "device": "4e294ca5-94e0-49db-b2bf-7b87e01f723a",
-  "temperature": 25.3,
-  "battery": 3.85,
+  "device": "aae610a1-fdcf-4b32-b422-314449b3693a",
+  "temperature": 23.5,
   "humidity": 65.2,
-  "co2": 450
+  "pressure": 1013.25,
+  "altitude": 520.8
 }
 ```
+
+**Campos:**
+- `device`: ID del dispositivo en Datacake (String)
+- `temperature`: Temperatura en grados Celsius (Float)
+- `humidity`: Humedad relativa en porcentaje (Float)
+- `pressure`: Presión atmosférica en hectopascales (Float)
+- `altitude`: Altitud calculada en metros (Float)
 
 ## 🐛 Solución de Problemas
 
 ### No se conecta a WiFi
-- Verifica que las credenciales sean correctas
+- Verifica que las credenciales en `include/credentials.h` sean correctas
 - Asegúrate de que el ESP32 esté dentro del rango del router
+- Revisa el Serial Monitor para mensajes de error
 
 ### Error al enviar datos
-- Verifica que la URL de Datacake sea correcta
+- Verifica que la URL de Datacake en `include/credentials.h` sea correcta
 - Revisa que el Device ID sea válido
-- Comprueba que los campos existan en Datacake
+- Comprueba que los campos existan en Datacake con los nombres exactos
 
 ### No aparecen datos en el dashboard
 - Espera unos segundos para que los datos se procesen
 - Verifica que los nombres de los campos coincidan exactamente
+- Revisa el Serial Monitor para ver qué JSON se está enviando
+
+### Error con sensor BME280
+- Verifica las conexiones del sensor (VCC, GND, SDA, SCL)
+- Asegúrate de que el sensor esté alimentado con 3.3V
+- Comprueba que el build flag `USE_SIMULATED_DEVICE` esté comentado en `platformio.ini`
+- El sensor intentará ambos I2C addresses (0x76 y 0x77) automáticamente
+- Revisa el Serial Monitor para mensajes de inicialización del sensor
 
 ## 📚 Recursos
 
